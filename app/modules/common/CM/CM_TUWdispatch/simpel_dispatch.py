@@ -107,8 +107,8 @@ def run(data,inv_flag,selection=[[],[]],demand_f=1):
     m.restriction_factor_jt = pe.Param(m.j,m.t,initialize=val["restriction_factor_jt"])
     m.min_out_factor_j = pe.Param(m.j,initialize=val["min_out_factor_j"])
 
-    m.pef_electricity = pe.Param(initialize=1)
-    m.pef_gas = pe.Param(initialize=1.1)
+    m.pef_electricity = pe.Param(initialize=1.5)
+    m.pef_gas = pe.Param(initialize=1.5)
     m.pef_export_electricity = pe.Param(initialize=1.2)
     #%% Variablen
     m.x_th_jt = pe.Var(m.j,m.t,within=pe.NonNegativeReals)
@@ -325,10 +325,10 @@ def run(data,inv_flag,selection=[[],[]],demand_f=1):
 
     m.renewable_factor = pe.Constraint(rule=renewable_factor_j_rule)
 
-     #% PED-specific constraints
+    #  % PED-specific constraints
     
     def ped_import_rule(m, t):
-        return m.E_import[t] == sum((m.x_th_jt[j, t]/m.n_th_jt[j, t]) * m.pef_electricity for j in m.j_hp) + sum((m.x_th_jt[j, t]/m.n_th_jt[j, t]) * m.pef_gas for j in m.j_bp)
+        return m.E_import[t] == sum((m.x_th_jt[j, t]/m.n_th_jt[j, t]) * m.pef_electricity  for j in m.j_hp) + sum((m.x_th_jt[j, t]/m.n_th_jt[j, t]) * m.pef_gas  for j in m.j_bp) + sum((m.x_th_jt[j, t]/m.n_th_jt[j, t]) * m.pef_electricity  for j in m.j_wasteheat_heat_pump) + sum((m.x_th_jt[j, t]/m.n_th_jt[j, t]) * m.pef_electricity  for j in m.j_air_heat_pump) + sum((m.x_th_jt[j, t]/m.n_th_jt[j, t]) * m.pef_electricity  for j in m.j_river_heat_pump) + sum((m.x_th_jt[j, t]/m.n_th_jt[j, t]) * m.pef_electricity  for j in m.j_wastewater_heat_pump)
     m.ped_import = pe.Constraint(m.t, rule=ped_import_rule)
 
     def ped_export_rule(m, t):
