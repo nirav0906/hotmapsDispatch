@@ -106,6 +106,10 @@ def run(data,inv_flag,selection=[[],[]],demand_f=1):
     m.n_th_nom_jt = pe.Param(m.j,m.t,initialize=val["n_th_nom_jt"])
     m.restriction_factor_jt = pe.Param(m.j,m.t,initialize=val["restriction_factor_jt"])
     m.min_out_factor_j = pe.Param(m.j,initialize=val["min_out_factor_j"])
+
+    m.pef_electricity = pe.Param(initialize=1)
+    m.pef_gas = pe.Param(initialize=1.1)
+    m.pef_export_electricity = pe.Param(initialize=1.2)
     #%% Variablen
     m.x_th_jt = pe.Var(m.j,m.t,within=pe.NonNegativeReals)
     m.Cap_j = pe.Var(m.j,within=pe.NonNegativeReals)
@@ -128,6 +132,10 @@ def run(data,inv_flag,selection=[[],[]],demand_f=1):
 #    m.Storage_load_hs_jt = pe.Var(m.j_hs,m.t, within = pe.Boolean)
 #    m.Storage_unload_hs_jt = pe.Var(m.j_hs,m.t, within = pe.Boolean)
 #    m.cop_HP_jt = pe.Var(m.j,m.t,within=pe.NonNegativeReals)
+
+    #   PED specific variables
+    m.E_import = pe.Var(m.t, within=pe.NonNegativeReals)  # Imported energy (thermal energy produced by heat pumps and boilers)
+    m.E_export = pe.Var(m.t, within=pe.NonNegativeReals)  # Exported energy (electricity from biomass CHP)
 
     #%% Nebenbedingungen
     def potential_restriction_rule_j(m,j):
@@ -316,6 +324,20 @@ def run(data,inv_flag,selection=[[],[]],demand_f=1):
         return rule
 
     m.renewable_factor = pe.Constraint(rule=renewable_factor_j_rule)
+
+     #% PED-specific constraints
+    
+    def ped_import_rule(m, t):
+        return m.E_import[t] == sum((m.x_th_jt[j, t]/m.n_th_jt[j, t]) * m.pef_electricity for j in m.j_hp) + sum((m.x_th_jt[j, t]/m.n_th_jt[j, t]) * m.pef_gas for j in m.j_bp)
+    m.ped_import = pe.Constraint(m.t, rule=ped_import_rule)
+
+    def ped_export_rule(m, t):
+        return m.E_export[t] == sum(m.x_el_jt[j, t] * m.pef_export_electricity for j in m.j_chp)
+    m.ped_export = pe.Constraint(m.t, rule=ped_export_rule)
+
+    def ped_primary_energy_balance_rule(m, t):
+        return m.E_export[t] >= m.E_import[t]
+    m.ped_primary_energy_balance = pe.Constraint(m.t, rule=ped_primary_energy_balance_rule)
 
 
     #%% Zielfunktion
