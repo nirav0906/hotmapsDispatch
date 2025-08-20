@@ -10,6 +10,7 @@ import json
 import numpy as np
 import pandas as pd
 import copy
+import pyomo.environ as pe
 from pathlib import Path
 path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.
                                                        abspath(__file__))))
@@ -44,6 +45,11 @@ def save_sol_to_json (instance,results,inv_flag,path2solution = path2solution):
             'Full Load Hours': 'h',
             'Full Load Hours Heat Storage': 'h',
             'Full Load Hours:': 'h',
+            'Grid Electricity Import': 'MWh',
+            'PV Electricity Used': 'MWh',
+            'PV Electricity Exported': 'MWh',
+            'Hydro Electricity Used': 'MWh',
+            'Hydro Electricity Exported': 'MWh',
             'HS-Capacities': 'MWh',
             'Heat Demand': 'MW',
             'Heat Price': 'EUR/MWh',
@@ -136,7 +142,18 @@ def save_sol_to_json (instance,results,inv_flag,path2solution = path2solution):
             "emission factor heat storages": "tCO2/MWh",
             "emission factor:":"tCO2/MWh",
             "Final Energy Mix By Energy Carrier":"MWh",
-            'Total CO2 Emission: By Energy Carrier': 'kg CO2'
+            'Total CO2 Emission: By Energy Carrier': 'kg CO2',
+            'PV Investment Cost': 'EUR',
+            'Refurbishment Cost': 'EUR',
+            'Hydro Self-Consumption Rate': '%',
+            'Hydro Export Rate': '%',
+            'PV Export Rate': '%',
+            'PV Self-Consumption Rate': '%',
+            'Energy Saved with Refurbishment': 'MWh',
+            'PV Export Revenue': 'EUR',
+            'Hydro Export Revenue': 'EUR',
+            'CHP Revenue': 'EUR',
+            'PV O&M Cost': 'EUR'
             }
     try:
 #        if os.path.isdir(path2solution) ==False:
@@ -153,6 +170,20 @@ def save_sol_to_json (instance,results,inv_flag,path2solution = path2solution):
         c_ramp = {j:sum( instance.ramp_jt[j,t]() * instance.c_ramp_j[j] for t in instance.t) for j in instance.j} 
         
         rev_tot = {j:sum(instance.x_el_jt[j,t]()*instance.sale_electricity_price_jt[j,t] for t in instance.t) for j in instance.j}
+        
+        # Additional revenue from PV exports (hydro treated as grid electricity, no export revenue)
+        rev_pv_export = 0.0
+        
+        if hasattr(instance, 'pv_export_t'):
+            if hasattr(instance, 'pv_export_price_t'):
+                rev_pv_export = sum(instance.pv_export_t[t]() * instance.pv_export_price_t[t] for t in instance.t)
+            else:
+                # Fallback to 70% of electricity price (matching optimization code)
+                try:
+                    _x = list(instance.j_bp)[0] 
+                except:
+                    _x = list(instance.j)[0]
+                rev_pv_export = sum(instance.pv_export_t[t]() * (instance.electricity_price_jt[_x,t] * 0.7) for t in instance.t)
 
         #FIXME: for modeling reasons this cost are not real costs
 #        c_hs_penalty_load = sum([instance.x_load_hs_t[hs,t]()*5e-2  for hs in instance.j_hs for t in instance.t])      # for modeling reasons
@@ -165,6 +196,10 @@ def save_sol_to_json (instance,results,inv_flag,path2solution = path2solution):
         solution={ "Thermal Power Energymix":{j:[instance.x_th_jt[(j,t)]() for t in instance.t] for j in instance.j},
                   "Installed Capacities": {j:instance.Cap_j[j]()  for j in instance.j},
                   "Heat Price": [results.solution(0).constraint["genearation_covers_demand_t["+str(t)+"]"]["Dual"] for t in instance.t],
+                    # "Heat Price": [results.solution(0).constraint.get(f"genearation_covers_demand_t[{t}]", {}).get("Dual", 0)
+                    # if f"genearation_covers_demand_t[{t}]" in results.solution(0).constraint
+                    # else 0
+                    #     for t in instance.t],
                   "Electricity Production by CHP" : sum([instance.x_el_jt[(j,t)]() for j in instance.j_chp for t in instance.t]),
                   "Thermal Production by CHP" : sum([instance.x_th_jt[(j,t)]() for j in instance.j_chp for t in instance.t]),
                   "Electrical Consumption of Heatpumps and Power to Heat devices" : {
@@ -183,6 +218,66 @@ def save_sol_to_json (instance,results,inv_flag,path2solution = path2solution):
                                           max(np.array([instance.x_th_jt[(j,t)]() / instance.n_th_jt[j,t] for j in instance.j_pth for t in instance.t]),default=0)]),
                   "Thermal Generation Mix":{j:sum([instance.x_th_jt[(j,t)]() for t in instance.t]) for j in instance.j}
                   }
+                  
+        # Add electricity source breakdown if available
+        if hasattr(instance, 'grid_import_t'):
+            solution["Grid Electricity Import"] = {
+                "Hourly": [instance.grid_import_t[t]() for t in instance.t],
+                "Total": sum(instance.grid_import_t[t]() for t in instance.t)
+            }
+            
+        if hasattr(instance, 'pv_used_t'):
+            solution["PV Electricity Used"] = {
+                "Hourly": [instance.pv_used_t[t]() for t in instance.t],
+                "Total": sum(instance.pv_used_t[t]() for t in instance.t)
+            }
+            solution["PV Electricity Exported"] = {
+                "Hourly": [instance.pv_export_t[t]() for t in instance.t],
+                "Total": sum(instance.pv_export_t[t]() for t in instance.t)
+            }
+            
+        if hasattr(instance, 'hydro_used_t'):
+            solution["Hydro Electricity Used"] = {
+                "Hourly": [instance.hydro_used_t[t]() for t in instance.t],
+                "Total": sum(instance.hydro_used_t[t]() for t in instance.t)
+            }
+
+            # Hydro export totals (if variable exists)
+            if hasattr(instance, 'hydro_export_t'):
+                solution["Hydro Electricity Exported"] = {
+                    "Hourly": [instance.hydro_export_t[t]() for t in instance.t],
+                    "Total": sum(instance.hydro_export_t[t]() for t in instance.t)
+                }
+
+        # ------------------------------------------------------------------
+        # Derive utilisation / export rates for hydro and PV
+        # ------------------------------------------------------------------
+        # PV metrics
+        if hasattr(instance, 'pv_generation_t'):
+            total_pv_gen = sum(instance.pv_generation_t[t]() for t in instance.t)
+            pv_used_tot  = solution.get("PV Electricity Used", {}).get("Total", 0.0)
+            pv_exp_tot   = solution.get("PV Electricity Exported", {}).get("Total", 0.0)
+            if total_pv_gen > 0:
+                solution["PV Self-Consumption Rate"] = 100 * pv_used_tot / total_pv_gen
+                solution["PV Export Rate"] = 100 * pv_exp_tot  / total_pv_gen
+            else:
+                # Ensure keys exist for downstream plotting even when PV generation is zero
+                solution["PV Self-Consumption Rate"] = 0.0
+                solution["PV Export Rate"] = 0.0
+
+        # Hydro metrics
+        if hasattr(instance, 'hydro_excess_t'):
+            total_hydro_avail = sum(instance.hydro_excess_t[t] for t in instance.t)
+            hydro_used_tot = solution.get("Hydro Electricity Used", {}).get("Total", 0.0)
+            hydro_exp_tot  = solution.get("Hydro Electricity Exported", {}).get("Total", 0.0)
+            if total_hydro_avail > 0:
+                solution["Hydro Self-Consumption Rate"] = 100 * hydro_used_tot / total_hydro_avail
+                solution["Hydro Export Rate"]   = 100 * hydro_exp_tot / total_hydro_avail
+
+        # Saved energy from refurbishment (space-heating reduction)
+        if hasattr(instance, 'mwh_saved_total'):
+            solution["Energy Saved with Refurbishment"] = pe.value(instance.mwh_saved_total) if 'pe' in globals() else instance.mwh_saved_total()
+
         solution["Final Energy"] = {j:[instance.x_th_jt[(j,t)]()/instance.n_th_jt[j,t] if instance.n_th_jt[j,t]>0 else 0 for t in instance.t] for j in instance.j}
         solution["Final Energy Mix"] = {j:sum(solution["Final Energy"][j]) for j in instance.j}
         solution["Total Final Energy"] = sum(solution["Final Energy Mix"].values())
@@ -196,7 +291,14 @@ def save_sol_to_json (instance,results,inv_flag,path2solution = path2solution):
         solution["Coldstart Costs"] = { j: sum([instance.coldstart_jt[j,t]()*instance.c_coldstart_j[j] for t in instance.t]) for j in instance.j}    
                                 
         solution["Revenue From Electricity"] = rev_tot
-        solution["Heat Demand"] = [instance.demand_th_t[t] for t in instance.t]
+        # If a refurbishment scenario is active, use the reduced demand profile
+        refurb_active = hasattr(instance, "include_refurb_cost") and (instance.include_refurb_cost() == 1)
+
+        if refurb_active and hasattr(instance, "demand_th_reduced"):
+            solution["Heat Demand"] = [instance.demand_th_reduced[t]() for t in instance.t]
+        else:
+            solution["Heat Demand"] = [instance.demand_th_t[t] for t in instance.t]
+
         solution["Total Heat Demand"] = sum(solution["Heat Demand"])
         solution["Peak Load"] = max(solution["Heat Demand"])
         try:
@@ -208,10 +310,62 @@ def save_sol_to_json (instance,results,inv_flag,path2solution = path2solution):
         solution["Mean Value Heat Price (with costs of existing power plants)"] =  c_tot_inv/sum([instance.demand_th_t[t] for t in instance.t])
         solution["Median Value Heat Price"] = np.median(np.array(solution["Heat Price"]))
         solution["Operational Cost"]= {j:(instance.Cap_j[j]() * instance.OP_fix_j[j] + sum(instance.x_th_jt[j,t]() * instance.OP_var_j[j]for t in instance.t))for j in instance.j}
+        
+        # Add PV O&M costs (matching optimization objective)
+        pv_om_cost = 0.0
+        if hasattr(instance, 'pv_capacity') and hasattr(instance, 'PV_om_fix'):
+            pv_om_cost = instance.pv_capacity() * instance.PV_om_fix
         solution["Variable Cost CHP's"]= sum([instance.mc_jt[j,t] * instance.x_th_jt[j,t]() - instance.sale_electricity_price_jt[j,t] * instance.x_el_jt[j,t]() for j in instance.j_chp for t in instance.t])
-        solution["Fuel Costs"] = {j:sum([(instance.mc_jt[j,t]-instance.em_j[j]*instance.pco2/instance.n_th_jt[j,t]) * instance.x_th_jt[j,t]() for t in instance.t]) for j in instance.j}
+        # ------------------------------------------------------------------
+        # SIMPLIFIED APPROACH: Calculate costs consistently with optimization objective
+        # mc_jt = fuel_cost + CO2_cost + excess_heat_cost, so we properly separate them
+        # ------------------------------------------------------------------
+        
+        solution["Fuel Costs"] = {}
+        
+        for j in instance.j:
+            if instance.ec_j[j] == "electricity":
+                # For electricity: only PV is free, hydro and grid are charged
+                if hasattr(instance, 'grid_import_t'):
+                    fuel_cost = 0.0
+                    for t in instance.t:
+                        elec_need = instance.x_th_jt[j, t]() / instance.n_th_jt[j, t] if instance.n_th_jt[j, t] > 0 else 0.0
+                        pv_used   = instance.pv_used_j_t[j, t]()    if hasattr(instance, 'pv_used_j_t')   else 0.0
+                        # hydro_used is now treated as grid electricity (charged, not free)
+                        grid_and_hydro_import = max(elec_need - pv_used, 0.0)
+                        # Use fuel component of mc_jt (excluding CO2)
+                        fuel_price = instance.mc_jt[j, t] - (instance.em_j[j] * instance.pco2 / instance.n_th_jt[j, t])
+                        fuel_cost += grid_and_hydro_import * fuel_price
+                    solution["Fuel Costs"][j] = fuel_cost
+                else:
+                    # Fallback: use fuel component only
+                    solution["Fuel Costs"][j] = sum([(instance.mc_jt[j,t] - instance.em_j[j]*instance.pco2/instance.n_th_jt[j,t]) * instance.x_th_jt[j,t]() for t in instance.t])
+            else:
+                # For non-electricity: use fuel component of mc_jt
+                solution["Fuel Costs"][j] = sum([(instance.mc_jt[j,t] - instance.em_j[j]*instance.pco2/instance.n_th_jt[j,t]) * instance.x_th_jt[j,t]() for t in instance.t])
+        # ------------------------------------------------------------------
+
         solution["MC"] = {j:[instance.mc_jt[j,t] for t in instance.t] for j in instance.j}
-        solution["CO2 Costs"]= {j:sum([(instance.em_j[j]*instance.pco2/instance.n_th_jt[j,t]) * instance.x_th_jt[j,t]() for t in instance.t]) for j in instance.j}
+        # Calculate CO2 costs consistently with fuel costs (only PV is emission-free)
+        solution["CO2 Costs"] = {}
+        for j in instance.j:
+            if instance.ec_j[j] == "electricity":
+                if hasattr(instance, 'grid_import_t'):
+                    co2_cost = 0.0
+                    for t in instance.t:
+                        elec_need = instance.x_th_jt[j, t]() / instance.n_th_jt[j, t] if instance.n_th_jt[j, t] > 0 else 0.0
+                        pv_used   = instance.pv_used_j_t[j, t]()    if hasattr(instance, 'pv_used_j_t')   else 0.0
+                        # hydro_used is now treated as grid electricity (has emissions, not free)
+                        grid_and_hydro_import = max(elec_need - pv_used, 0.0)
+                        # CO2 cost for grid and hydro imports
+                        co2_cost += grid_and_hydro_import * (instance.em_j[j] * instance.pco2 / instance.n_th_jt[j, t])
+                    solution["CO2 Costs"][j] = co2_cost
+                else:
+                    # Fallback: standard calculation
+                    solution["CO2 Costs"][j] = sum([(instance.em_j[j]*instance.pco2/instance.n_th_jt[j,t]) * instance.x_th_jt[j,t]() for t in instance.t])
+            else:
+                # For non-electricity: standard calculation
+                solution["CO2 Costs"][j] = sum([(instance.em_j[j]*instance.pco2/instance.n_th_jt[j,t]) * instance.x_th_jt[j,t]() for t in instance.t])
         solution["CO2 Price"] = instance.pco2()
         solution["emission factor"] = {j:instance.em_j[j] for j in instance.j}
         solution["emission factor heat storages"] = {hs:0 for hs in instance.j_hs}
@@ -411,10 +565,28 @@ def save_sol_to_json (instance,results,inv_flag,path2solution = path2solution):
         
         solution["Total Coldstart Costs"]= sum(solution["Coldstart Costs:"].values())
         solution["Total Ramping Costs"] = sum(solution["Ramping Costs:"].values())
-        solution["Total Operational Costs"] = sum(solution["Operational Cost:"].values())
+        solution["Total Operational Costs"] = sum(solution["Operational Cost:"].values()) + pv_om_cost
         solution["Total Fuel Costs"] = sum(solution["Fuel Costs:"].values())
         solution["Total CO2 Costs"] = sum(solution["CO2 Costs:"].values())
-        solution["Total Investment Costs (of new build plants and heat storages)"] = sum(solution["Anual Investment Cost:"].values())
+        # ------------------------------------------------------------------
+        # Add PV investment and refurbishment cost (if any) to the investment
+        # tally of NEW assets so that downstream totals capture them.
+        # ------------------------------------------------------------------
+        pv_inv_cost = 0.0
+        if hasattr(instance, "pv_capacity"):
+            pv_inv_cost = instance.pv_capacity() * instance.PV_invest_cost * instance.alpha_pv
+            solution["PV Investment Cost"] = pv_inv_cost
+
+        refurb_cost = 0.0
+        if refurb_active and hasattr(instance, "refurbishment_cost"):
+            refurb_cost = instance.refurbishment_cost()
+        
+        # Always include Refurbishment Cost in the solution, even if 0
+        solution["Refurbishment Cost"] = refurb_cost
+
+        solution["Total Investment Costs (of new build plants and heat storages)"] = \
+            sum(solution["Anual Investment Cost:"].values()) + pv_inv_cost + refurb_cost
+
         solution["Total Investment Costs of (of existing power plants and heat storages)"] = sum(solution["Anual Investment Cost (of existing power plants and heat storages)"].values())
 
         solution["Total Costs"] = solution["Total Coldstart Costs"] +\
@@ -425,7 +597,14 @@ def save_sol_to_json (instance,results,inv_flag,path2solution = path2solution):
                                 solution["Total Investment Costs (of new build plants and heat storages)"] +\
                                  solution["Total Investment Costs of (of existing power plants and heat storages)"]
                                  
-        solution["Total Revenue From Electricity"] = sum(solution["Revenue From Electricity:"].values()) 
+        solution["Total Revenue From Electricity"] = sum(solution["Revenue From Electricity:"].values()) + rev_pv_export
+        
+        # Add detailed breakdown for transparency
+        solution["PV Export Revenue"] = rev_pv_export
+        solution["Hydro Export Revenue"] = 0.0  # Hydro treated as grid electricity, no export revenue
+        solution["CHP Revenue"] = sum(solution["Revenue From Electricity:"].values())
+        solution["PV O&M Cost"] = pv_om_cost
+        
         solution["Total Thermal Generation"] = sum(solution["Thermal Generation Mix:"].values())
         
         solution["Total LCOH"] = (solution["Total Costs"] - solution["Total Revenue From Electricity"]) / solution["Total Heat Demand"]
@@ -449,6 +628,38 @@ def save_sol_to_json (instance,results,inv_flag,path2solution = path2solution):
         solution["unit"] = unit_dict
         
         print("Done !")
+
+        return solution
+    except Exception as e:
+        print("Error in creating JSON")
+        print(e)
+        return "Error3#"
+#%%
+        # ------------------------------------------------------------------
+        # Derive utilisation / export rates for hydro and PV
+        # ------------------------------------------------------------------
+        # PV metrics
+        if hasattr(instance, 'pv_generation_t'):
+            total_pv_gen = sum(instance.pv_generation_t[t]() for t in instance.t)
+            pv_used_tot  = solution.get("PV Electricity Used", {}).get("Total", 0.0)
+            pv_exp_tot   = solution.get("PV Electricity Exported", {}).get("Total", 0.0)
+            if total_pv_gen > 0:
+                solution["PV Self-Consumption Rate"] = 100 * pv_used_tot / total_pv_gen
+                solution["PV Export Rate"] = 100 * pv_exp_tot  / total_pv_gen
+
+        # Hydro metrics
+        if hasattr(instance, 'hydro_excess_t'):
+            total_hydro_avail = sum(instance.hydro_excess_t[t] for t in instance.t)
+            hydro_used_tot = solution.get("Hydro Electricity Used", {}).get("Total", 0.0)
+            hydro_exp_tot  = solution.get("Hydro Electricity Exported", {}).get("Total", 0.0)
+            if total_hydro_avail > 0:
+                solution["Hydro Self-Consumption Rate"] = 100 * hydro_used_tot / total_hydro_avail
+                solution["Hydro Export Rate"]   = 100 * hydro_exp_tot / total_hydro_avail
+
+        # Saved energy from refurbishment (space-heating reduction)
+        if hasattr(instance, 'mwh_saved_total'):
+            solution["Energy Saved with Refurbishment"] = pe.value(instance.mwh_saved_total) if 'pe' in globals() else instance.mwh_saved_total()
+
         return solution
     except Exception as e:
         print("Error in creating JSON")

@@ -5,6 +5,7 @@ Created on Tue Jan 23 11:52:40 2018
 @author: root
 """
 import numpy as np
+import pandas as pd
 import pprint
 class SliceMaker(object):
   def __getitem__(self, item):
@@ -47,21 +48,22 @@ def preprocessing(data, demand_f = 1, inv_flag = 0,selection=[[],[]]):
     j_air_heat_pump =   [key for key in tec if key in data["categorize"]["Heat Pump Air"] ]
     j_river_heat_pump = [key for key in tec if key in data["categorize"]["Heat Pump River Water"] ]
     j_wastewater_heat_pump = [key for key in tec if key in data["categorize"]["Heat Pump Wastewater"] ]
+    # j_excessheat_heat_pump = [key for key in tec if key in data["categorize"]["Heat Pump Excessheat"] ]
     j_wasteheat_heat_pump = [key for key in tec if key in data["categorize"]["Heat Pump Ind. Wasteheat"] ]
     j_hs =      tec_hs
-    j_hp_new =  j_air_heat_pump + j_river_heat_pump + j_wastewater_heat_pump + j_wasteheat_heat_pump
+    j_hp_new =  j_air_heat_pump + j_river_heat_pump + j_wastewater_heat_pump + j_wasteheat_heat_pump 
 
     #%% Parameter - #TODO: depends on how the input data looks finally
 
-    demand_th_t =           data["demand_th"]
+    demand_th_t =  data["demand_th"]
     
-    temp_river = data["river_temp"]
+    temp_river = data["river_temp"] 
     temp_waste_water = data["wastewater_temp"]
+    # temp_excess_heat = data["excessheat_temp"]
     temp_flow = data["inlet_temp"]
     temp_return = data["return_temp"]
     temp_ambient = data["temp"]
     radiation = data["radiation"]
-  
     max_demad =             max(data["demand_th"].values())
     max_installed_caps =    sum([data["P_th_cap"][key] for key in tec])
     max_installed_caps +=    sum([data["unload_cap_hs"][key] for key in j_hs])
@@ -84,6 +86,7 @@ def preprocessing(data, demand_f = 1, inv_flag = 0,selection=[[],[]]):
         **{j:np.asarray(list(temp_ambient.values())) for j in j_air_heat_pump},
         **{j:np.asarray(list(temp_river.values())) for j in j_river_heat_pump},
         **{j:np.asarray(list(temp_waste_water.values())) for j in j_wastewater_heat_pump},
+        # **{j:np.asarray(list(temp_excess_heat.values())) for j in j_excessheat_heat_pump},
         **{j:np.full(8760, 0) for j in j_wasteheat_heat_pump},
         **{j:np.full(8760, 0) for j in tec if j not in j_hp_new}
         }
@@ -172,7 +175,7 @@ def preprocessing(data, demand_f = 1, inv_flag = 0,selection=[[],[]]):
                                     n_th_jt[j][t-1] + \
                                      data["em"][data["energy_carrier"][j]]*data["P_co2"] / \
                                       n_th_jt[j][t-1]+ \
-                                          data["excess_heat_source_price"][j] * (1 - 1/n_th_jt[j][t-1] )
+                                          data["excess_heat_source_price"][j] * (1 - 1/n_th_jt[j][t-1] ) 
     pco2 =   data["P_co2"]                            
     mc_jt =                 {(key,t):mc[key,t] for t in range(1,8760+1) for key in tec}
     n_th_jt =                {(key,t):n_th_jt[key][t-1] for t in range(1,8760+1) for key in tec}
@@ -245,14 +248,12 @@ def preprocessing(data, demand_f = 1, inv_flag = 0,selection=[[],[]]):
             rf_j, rf_tot, OP_var_j, temperature, thresh,
             sale_electricity_price_jt, OP_fix_hs, all_heat_geneartors,
             mr_j,j_chp_se,j_chp_bp,em_j,cap_losse_hs, j_air_heat_pump,
-            j_river_heat_pump, j_wastewater_heat_pump, 
+            j_river_heat_pump, j_wastewater_heat_pump,
             j_wasteheat_heat_pump, hp_restriction_factor_jt, min_p_th_j, 
             nom_p_th_j, c_coldstart_j,potential_j,pco2,pow_cap_j,
             temp_river,temp_waste_water,temp_flow,temp_return,
             temp_ambient,radiation,j_hp_new,restriction_factor_jt,n_th_nom_jt,
             min_out_factor_j,ec_j]
-
-    
     
     keys = ['j', 'j_hp', 'j_pth', 'j_st', 'j_waste', 'j_chp', 'j_bp', 'j_wh',
             'j_gt', 'j_hs', 'demand_th_t', 'max_demad', 'radiation_t', 'IK_j',

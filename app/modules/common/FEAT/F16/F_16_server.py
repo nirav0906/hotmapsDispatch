@@ -422,6 +422,7 @@ cmap_glob = {
         "Heat Pump River Water":Blues,
         "Heat Pump Wastewater":YlOrBr,
         "Heat Pump Ind. Wasteheat":RdPu,
+        # "Heat Pump Excessheat":Magma,
 
 }
 # =============================================================================
@@ -564,6 +565,7 @@ def modify_doc(doc):
     temperature_name_map, temperature_name_map_inv, temperature = load_extern_data("temperature")
     river_temperature_name_map, river_temperature_name_map_inv, river_temperature = load_extern_data("river_temperature")
     wastewater_temperature_name_map, wastewater_temperature_name_map_inv, wastewater_temperature = load_extern_data("wastewater_temperature")
+    # excessheat_temperature_name_map, excessheat_temperature_name_map_inv, excessheat_temperature = load_extern_data("excessheat_temperature")
     inlet_temperature_name_map, inlet_temperature_name_map_inv, inlet_temperature = load_extern_data("inlet_temperature")
     return_temperature_name_map, return_temperature_name_map_inv, return_temperature = load_extern_data("return_temperature")
     # Database for the external data manipulation,
@@ -612,6 +614,11 @@ def modify_doc(doc):
                           dic_inv = invert_dict(wastewater_temperature_name_map),
                           labels=lab, 
                           unit="°C"),
+                    # dict(data = excessheat_temperature,
+                    #       dic = excessheat_temperature_name_map,
+                    #       dic_inv = invert_dict(excessheat_temperature_name_map),
+                    #       labels=lab, 
+                    #       unit="°C"),
                     ]
     # Create Data structure for better code handling
     widget_to_model_keys_dict = dict(zip(widgets_keys,model_keys))

@@ -866,8 +866,10 @@ def plot_solutions(show_plot=False, path2json=path2json,
         p_full_load_hours_abs = bar_chart(dic[decison_var],path2output,decison_var,cmap)
  
 
-        costs = ["Total Coldstart Costs","Total Ramping Costs","Total Operational Costs","Total Fuel Costs","Total CO2 Costs","Total Investment Costs (of new build plants and heat storages)","Total Investment Costs of (of existing power plants and heat storages)"]
-        singel_values = ["Total Costs","Total Revenue From Electricity","Total Thermal Generation","Total Final Energy","Total LCOH","Total CO2 Emissions","Total Heat Demand","Peak Load","CO2 Price"]
+        costs = ["Total Coldstart Costs","Total Ramping Costs","Total Operational Costs","Total Fuel Costs","Total CO2 Costs","Total Investment Costs (of new build plants and heat storages)","Total Investment Costs of (of existing power plants and heat storages)",
+                 "PV Investment Cost","Refurbishment Cost"]
+        singel_values = ["Total Costs","Total Revenue From Electricity","Total Thermal Generation","Total Final Energy","Total LCOH","Total CO2 Emissions","Total Heat Demand","Peak Load","CO2 Price",
+                         "Hydro Self-Consumption Rate","Hydro Export Rate","PV Export Rate","PV Self-Consumption Rate","Energy Saved with Refurbishment"]
         data_topics = costs+singel_values 
         
         costs_hg = ["Anual Investment Cost:",

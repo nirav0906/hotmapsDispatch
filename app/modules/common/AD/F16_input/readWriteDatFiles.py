@@ -21,6 +21,7 @@ from pprint import pprint
 import pandas as pd
 import numpy as np
 import pickle
+import os
 
 # =============================================================================
 # global paths and variables
@@ -87,7 +88,7 @@ def add_profile(short,name,year,profile,string,new=True):
     """
 
     dat_files = ["inlet_temperature","load","price","radiation", "return_temperature",
-                 "river_temperature","temperature","wastewater_temperature"]
+                 "river_temperature","temperature","wastewater_temperature", "excessheat_temperature"]
     if string not in dat_files:
         print(f"{string} is not a valid dat file, select one of {dat_files}")
         return False
@@ -115,13 +116,69 @@ def main(arg,*args,**kwargs):
 # main function
 # =============================================================================
 if __name__ == "__main__":
-    empty_dats(BASE_DIR)  # empty all dat files 
-    # add_profile(short="aut",
-    #             name="austria",
-    #             year=2010,
-    #             profile= np.cos(np.linspace(0,4*np.pi,8760)),
-    #             string="river_temperatureasf",
-    #             new=True)
+    # empty_dats(BASE_DIR)  # empty all dat files 
+    manual_file_path  = r"C:\Users\Nirav\OneDrive - TU Wien\Desktop\PED_SupplyOptimization\hotmapsDispatch\app\modules\common\AD\F16_input"
+    BASE_DIR = Path(manual_file_path).resolve()
+
+    df = pd.read_excel(r"C:\Users\Nirav\OneDrive - TU Wien\Desktop\PED_SupplyOptimization\hotmapsDispatch\app\\modules\common\CM\CM_TUWdispatch\SLO PED- PlaninKranj urni podatki 2024.xlsx")
+
+    add_profile(short="kranj",
+            name="Kranj - Slovenia",
+            year=2024,
+            profile= list(df.temperature[0:8760]),
+            string="temperature",
+            new=False)
+
+    temperature_profile, temperature_mapper = opendat("temperature", BASE_DIR)
+
+    add_profile(short="kranj",
+            name="Kranj - Slovenia",
+            year=2024,
+            profile= list(df.corrected_supply[0:8760]),
+            string="inlet_temperature",
+            new=False)
+    inlet_profile, inlet_mapper = opendat("inlet_temperature", BASE_DIR)
+
+
+    add_profile(short="kranj",
+            name="Kranj - Slovenia",
+            year=2024,
+            profile= list(df.price[0:8760]),
+            string="price",
+            new=False)
+
+    price_profile, price_mapper = opendat("price", BASE_DIR)
+
+    add_profile(short="kranj",
+            name="Kranj - Slovenia",
+            year=2024,
+            profile= list(df.corrected_demand[0:8760]),
+            string="load",
+            new=False)
+
+    demand_profile, demand_mapper = opendat("load", BASE_DIR)
+
+    add_profile(short="kranj",
+            name="Kranj - Slovenia",
+            year=2024,
+            profile= list(df.corrected_return[0:8760]),
+            string="return_temperature",
+            new=False)
+
+    return_profile, return_mapper = opendat("return_temperature", BASE_DIR)
+
+    # ##### Add new dat file for waste heat #####
+    # add_profile(short="kranj",
+    #         name="Kranj - Slovenia",
+    #         year=2024,
+    #         profile= list(df.wasteheat[0:8760]),
+    #         string="excessheat_temperature",
+    #         new=True)
+    
+    # wasteheat_profile, wasteheat_mapper = opendat("excessheat_temperature", BASE_DIR)
+    
+    
+    
                 
 
 
